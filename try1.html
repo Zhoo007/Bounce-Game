@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en" >
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Color Bounce Game - Level Select & Nice Design</title>
+  <style>
+    * {
+      margin: 0; padding: 0; box-sizing: border-box;
+    }
+    body, html {
+      height: 100%;
+      background: linear-gradient(135deg, #141414 0%, #272727 100%);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      overflow: hidden;
+      color: #eee;
+      user-select: none;
+    }
+    #gameCanvas {
+      display: block;
+      margin: 0 auto;
+      background: radial-gradient(circle at center, #222, #111);
+      border: 2px solid #444;
+      border-radius: 12px;
+      touch-action: none;
+    }
+    #startScreen, #gameOverScreen {
+      position: fixed;
+      top:0; left:0; width:100%; height:100%;
+      background: rgba(20, 20, 20, 0.95);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 10;
+      font-weight: 600;
+    }
+    #startScreen h1 {
+      font-size: 3rem;
+      margin-bottom: 10px;
+      color: #fefefe;
+      text-shadow: 0 0 10px #00ccff;
+    }
+    #startScreen p {
+      font-size: 1.3rem;
+      margin-bottom: 30px;
+      color: #aaa;
+    }
+    #startScreen button, #gameOverScreen button {
+      margin: 10px;
+      padding: 15px 40px;
+      font-size: 1.3rem;
+      background: linear-gradient(135deg, #00ccff, #0066cc);
+      color: #fff;
+      border: none;
+      border-radius: 15px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+      box-shadow: 0 0 8px #00ccff;
+      font-weight: 700;
+      user-select: none;
+    }
+    #startScreen button:hover, #gameOverScreen button:hover {
+      background: linear-gradient(135deg, #0099ff, #004c99);
+      box-shadow: 0 0 14px #0099ff;
+    }
+    #hud {
+      position: fixed;
+      top: 15px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 20px;
+      letter-spacing: 1.5px;
+      z-index: 5;
+      user-select: none;
+      color: #00ccff;
+      text-shadow: 0 0 4px #00ccff;
+      font-weight: 700;
+      display: none;
+    }
+    #gameOverScreen {
+      font-size: 2.5rem;
+      color: #ff4444;
+      display: none;
+      text-align: center;
+    }
+    #gameOverScreen p {
+      margin-top: 15px;
+      font-size: 1.4rem;
+      color: #ddd;
+      font-weight: 400;
+      text-shadow: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="startScreen">
+    <h1>Color Bounce</h1>
+    <p>Select Difficulty</p>
+    <button data-difficulty="normal">Normal</button>
+    <button data-difficulty="hard">Hard</button>
+    <button data-difficulty="veryhard">Very Hard</button>
+  </div>
+
+  <div id="gameOverScreen">
+    Game Over
+    <p id="finalTime"></p>
+    <button id="restartBtn">Restart</button>
+  </div>
+
+  <div id="hud">
+    Time: <span id="timer">0.00</span>s | Best: <span id="bestRecord">0.00</span>s
+  </div>
+
+  <canvas id="gameCanvas" width="400" height="700"></canvas>
+
+  <script>
+  (() => {
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width;
+    const H = canvas.height;
+
+    const COLORS = ['#FF3B3B', '#3B99FF', '#3BFF6E', '#FFED3B'];
+
+    let difficulty = 'normal';
+    let gameSpeed = 2;
+
+    const startScreen = document.getElementById('startScreen');
+    const gameOverScreen = document.getElementById('gameOverScreen');
+    const finalTimeP = document.getElementById('finalTime');
+    const restartBtn = document.getElementById('restartBtn');
+    const hud = document.getElementById('hud');
+    const timerSpan = document.getElementById('timer');
+    const bestRecordSpan = document.getElementById('bestRecord');
+
+    let bestRecord = localStorage.getItem('colorBounceBest') || 0;
+    bestRecordSpan.textContent = parseFloat(bestRecord).toFixed(2);
+
+    class Ball {
+      constructor() {
+        this.radius = 12;
+        this.x = W / 2;
+        this.y = H - this.radius - 150;  // Start higher
+        this.color = COLORS[Math.floor(Math.random() * COLORS.length)];
+        this.vy = 0;
+        this.gravity = 0.7;
+        this.jumpForce = -6;
+      }
+      jump() {
+        this.vy = this.jumpForce;
+      }
+      update() {
+        this.vy += this.gravity;
+        this.y += this.vy;
+        if (this.y + this.radius > H) {
+          this.y = H - this.radius;
+          this.vy = 0;
+        }
+        if (this.y - this.radius < 0) {
+          this.y = this.radius;
+          this.vy = 0;
+        }
+      }
+      draw() {
+        ctx.beginPath();
+        ctx.fillStyle = this.color;
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = 15;
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.closePath();
+      }
+    }
+
+    class RingObstacle {
+      constructor(y, speed) {
+        this.x = W / 2;
+        this.y = y;
+        this.radius = 90;
+        this.lineWidth = 15;
+        this.rotation = 0;
+        this.speed = speed;
+        this.colors = COLORS.slice().sort(() => Math.random() - 0.5);
+        this.colorChangedInside = false;
+        this.insideRing = false;
+      }
+      update() {
+        this.y += this.speed;
+        this.rotation += 0.02;
+        if (this.y - this.radius > H) {
+          this.y = -this.radius - Math.random() * 200;
+          this.colors = COLORS.slice().sort(() => Math.random() - 0.5);
+          this.colorChangedInside = false;
+          this.insideRing = false;
+        }
+      }
+      draw() {
+        for (let i = 0; i < 4; i++) {
+          ctx.beginPath();
+          ctx.strokeStyle = this.colors[i];
+          ctx.lineWidth = this.lineWidth;
+          ctx.arc(
+            this.x,
+            this.y,
+            this.radius,
+            this.rotation + i * Math.PI / 2,
+            this.rotation + (i + 1) * Math.PI / 2
+          );
+          ctx.stroke();
+        }
+      }
+      checkCollision(ball) {
+        const dx = ball.x - this.x;
+        const dy = ball.y - this.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        const insideRingNow = dist < this.radius + ball.radius && dist > this.radius - this.lineWidth - ball.radius;
+
+        if (this.insideRing && !insideRingNow) {
+          this.insideRing = false;
+          this.colorChangedInside = false;
+        }
+
+        if (insideRingNow) {
+          this.insideRing = true;
+          let angle = (Math.atan2(dy, dx) - this.rotation + 2 * Math.PI) % (2 * Math.PI);
+          let sector = Math.floor((angle / (2 * Math.PI)) * 4);
+          let sectorColor = this.colors[sector];
+          if (sectorColor !== ball.color) {
+            return true;
+          }
+        }
+        return false;
+      }
+      isInsideCenter(ball) {
+        const dx = ball.x - this.x;
+        const dy = ball.y - this.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        return dist < this.radius - this.lineWidth - ball.radius;
+      }
+    }
+
+    class ColorChanger {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.radius = 18;
+        this.active = true;
+      }
+      update(speed) {
+        this.y += speed;
+        if (this.y - this.radius > H) this.active = false;
+      }
+      draw() {
+        if (!this.active) return;
+        ctx.beginPath();
+        ctx.fillStyle = '#fff';
+        ctx.shadowColor = '#fff';
+        ctx.shadowBlur = 15;
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.closePath();
+      }
+      collides(ball) {
+        const dx = ball.x - this.x;
+        const dy = ball.y - this.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        return dist < this.radius + ball.radius;
+      }
+    }
+
+    let ball;
+    let obstacles = [];
+    let colorChangers = [];
+    let elapsedTime = 0;
+    let playing = false;
+    let animationId;
+
+    function initObstacles() {
+      obstacles = [];
+      colorChangers = [];
+      for (let i = 0; i < 5; i++) {
+        let yPos = -i * 350;
+        const ring = new RingObstacle(yPos, gameSpeed);
+        obstacles.push(ring);
+        colorChangers.push(new ColorChanger(ring.x, ring.y));
+      }
+    }
+
+    function resetGame() {
+      ball = new Ball();
+      elapsedTime = 0;
+      playing = true;
+      hud.style.display = 'block';
+      gameOverScreen.style.display = 'none';
+      initObstacles();
+      timerSpan.textContent = '0.00';
+      if(animationId) cancelAnimationFrame(animationId);
+      animationId = requestAnimationFrame(gameLoop);
+    }
+
+    function gameOver() {
+      playing = false;
+      hud.style.display = 'none';
+      gameOverScreen.style.display = 'flex';
+      finalTimeP.textContent = `Your time: ${elapsedTime.toFixed(2)}s`;
+      if (elapsedTime > bestRecord) {
+        bestRecord = elapsedTime;
+        bestRecordSpan.textContent = bestRecord.toFixed(2);
+        localStorage.setItem('colorBounceBest', bestRecord);
+      }
+      if(animationId) cancelAnimationFrame(animationId);
+    }
+
+    function gameLoop() {
+      if (!playing) return;
+      elapsedTime += 1 / 60;
+      timerSpan.textContent = elapsedTime.toFixed(2);
+
+      ctx.clearRect(0, 0, W, H);
+
+      ball.update();
+      ball.draw();
+
+      for (let i = 0; i < obstacles.length; i++) {
+        const ob = obstacles[i];
+        ob.update();
+        ob.draw();
+
+        const changer = colorChangers[i];
+        changer.x = ob.x;
+        changer.y = ob.y;
+        changer.update(ob.speed);
+        changer.draw();
+
+        const insideCenter = ob.isInsideCenter(ball);
+
+        // Change ball color inside center circle
+        if (insideCenter && changer.active && changer.collides(ball)) {
+          let newColor;
+          do {
+            newColor = COLORS[Math.floor(Math.random() * COLORS.length)];
+          } while (newColor === ball.color);
+          ball.color = newColor;
+          changer.active = false;
+          ob.colorChangedInside = true;
+        }
+        // Reset color changer once ball leaves center
+        if (!insideCenter && !changer.active) {
+          changer.active = true;
+          ob.colorChangedInside = false;
+        }
+
+        // Check collision with wrong color sector
+        if (ob.checkCollision(ball) && !insideCenter && !ob.colorChangedInside) {
+          gameOver();
+          return;
+        }
+      }
+      animationId = requestAnimationFrame(gameLoop);
+    }
+
+    window.addEventListener('keydown', e => {
+      if ((e.code === 'Space' || e.code === 'ArrowUp') && playing && ball.vy >= 0) {
+        ball.jump();
+      }
+    });
+
+    window.addEventListener('click', () => {
+      if (playing && ball.vy >= 0) ball.jump();
+    });
+
+    window.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (playing && ball.vy >= 0) {
+        ball.jump();
+      }
+    }, { passive: false });
+
+    startScreen.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        difficulty = btn.dataset.difficulty;
+        switch(difficulty) {
+          case 'normal': gameSpeed = 2; break;
+          case 'hard': gameSpeed = 3.5; break;
+          case 'veryhard': gameSpeed = 5; break;
+        }
+        startScreen.style.display = 'none';
+        resetGame();
+      });
+    });
+
+    restartBtn.addEventListener('click', () => {
+      gameOverScreen.style.display = 'none';
+      resetGame();
+    });
+
+  })();
+  </script>
+</body>
+</html>
