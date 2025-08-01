@@ -144,7 +144,7 @@
         this.color = COLORS[Math.floor(Math.random() * COLORS.length)];
         this.vy = 0;
         this.gravity = 0.7;
-        this.jumpForce = -7;
+        this.jumpForce = -6;  // Smaller jump for smoother bounce on phone
       }
       jump() {
         this.vy = this.jumpForce;
@@ -217,7 +217,6 @@
 
         const insideRingNow = dist < this.radius + ball.radius && dist > this.radius - this.lineWidth - ball.radius;
 
-        // Leaving detection fix here:
         if (this.insideRing && !insideRingNow) {
           this.insideRing = false;
           this.colorChangedInside = false;
@@ -360,14 +359,22 @@
     }
 
     window.addEventListener('keydown', e => {
-      if ((e.code === 'Space' || e.code === 'ArrowUp') && playing) {
+      if ((e.code === 'Space' || e.code === 'ArrowUp') && playing && ball.vy >= 0) {
         ball.jump();
       }
     });
 
     window.addEventListener('click', () => {
-      if (playing) ball.jump();
+      if (playing && ball.vy >= 0) ball.jump();
     });
+
+    // Added touchstart for smoother mobile tap input
+    window.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (playing && ball.vy >= 0) {
+        ball.jump();
+      }
+    }, { passive: false });
 
     // Difficulty buttons:
     startScreen.querySelectorAll('button').forEach(btn => {
@@ -390,8 +397,8 @@
       resetGame();
       requestAnimationFrame(gameLoop);
     });
-
   })();
   </script>
 </body>
 </html>
+
